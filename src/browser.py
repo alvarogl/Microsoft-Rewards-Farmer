@@ -6,16 +6,14 @@ from pathlib import Path
 from typing import Any
 
 import ipapi
-import seleniumwire.undetected_chromedriver as webdriver
-from selenium.webdriver.chrome.webdriver import WebDriver
+from playwright.sync_api import sync_playwright
 
 from src.userAgentGenerator import GenerateUserAgent
 from src.utils import Utils
 
-
 class Browser:
-    """WebDriver wrapper class."""
-
+    """Playwright wrapper class."""
+    
     def __init__(self, mobile: bool, account, args: Any) -> None:
         self.mobile = mobile
         self.browserType = "mobile" if mobile else "desktop"
@@ -29,7 +27,7 @@ class Browser:
         elif account.get("proxy"):
             self.proxy = account["proxy"]
         self.userDataDir = self.setupProfiles()
-        self.browserConfig = Utils.getBrowserConfig(self.userDataDir)
+        self.browserConfig = Utils.get_browser_config(self.userDataDir)
         (
             self.userAgent,
             self.userAgentMetadata,
@@ -37,9 +35,9 @@ class Browser:
         ) = GenerateUserAgent().userAgent(self.browserConfig, mobile)
         if newBrowserConfig:
             self.browserConfig = newBrowserConfig
-            Utils.saveBrowserConfig(self.userDataDir, self.browserConfig)
-        self.webdriver = self.browserSetup()
-        self.utils = Utils(self.webdriver)
+            Utils.save_browser_config(self.userDataDir, self.browserConfig)
+        self.browser = self.browserSetup()
+        self.utils = Utils(self.browser)
 
     def __enter__(self) -> "Browser":
         return self
@@ -51,103 +49,15 @@ class Browser:
         """Perform actions to close the browser cleanly."""
         # close web browser
         with contextlib.suppress(Exception):
-            self.webdriver.quit()
+            self.browser.close()
 
-    def browserSetup(
-        self,
-    ) -> WebDriver:
-        options = webdriver.ChromeOptions()
-        options.headless = self.headless
-        options.add_argument(f"--lang={self.localeLang}")
-        options.add_argument("--log-level=3")
-
-        options.add_argument("--ignore-certificate-errors")
-        options.add_argument("--ignore-certificate-errors-spki-list")
-        options.add_argument("--ignore-ssl-errors")
-
-        seleniumwireOptions: dict[str, Any] = {"verify_ssl": False}
-
-        if self.proxy:
-            seleniumwireOptions["proxy"] = {
-                "http": self.proxy,
-                "https": self.proxy,
-                "no_proxy": "localhost,127.0.0.1",
-            }
-
-        driver = webdriver.Chrome(
-            options=options,
-            seleniumwire_options=seleniumwireOptions,
-            user_data_dir=self.userDataDir.as_posix(),
-        )
-
-        seleniumLogger = logging.getLogger("seleniumwire")
-        seleniumLogger.setLevel(logging.ERROR)
-
-        if self.browserConfig.get("sizes"):
-            deviceHeight = self.browserConfig["sizes"]["height"]
-            deviceWidth = self.browserConfig["sizes"]["width"]
-        else:
-            if self.mobile:
-                deviceHeight = random.randint(568, 1024)
-                deviceWidth = random.randint(320, min(576, int(deviceHeight * 0.7)))
-            else:
-                deviceWidth = random.randint(1024, 2560)
-                deviceHeight = random.randint(768, min(1440, int(deviceWidth * 0.8)))
-            self.browserConfig["sizes"] = {
-                "height": deviceHeight,
-                "width": deviceWidth,
-            }
-            Utils.saveBrowserConfig(self.userDataDir, self.browserConfig)
-
-        if self.mobile:
-            screenHeight = deviceHeight + 146
-            screenWidth = deviceWidth
-        else:
-            screenWidth = deviceWidth + 55
-            screenHeight = deviceHeight + 151
-
-        logging.info(f"Screen size: {screenWidth}x{screenHeight}")
-        logging.info(f"Device size: {deviceWidth}x{deviceHeight}")
-
-        if self.mobile:
-            driver.execute_cdp_cmd(
-                "Emulation.setTouchEmulationEnabled",
-                {
-                    "enabled": True,
-                },
-            )
-
-        driver.execute_cdp_cmd(
-            "Emulation.setDeviceMetricsOverride",
-            {
-                "width": deviceWidth,
-                "height": deviceHeight,
-                "deviceScaleFactor": 0,
-                "mobile": self.mobile,
-                "screenWidth": screenWidth,
-                "screenHeight": screenHeight,
-                "positionX": 0,
-                "positionY": 0,
-                "viewport": {
-                    "x": 0,
-                    "y": 0,
-                    "width": deviceWidth,
-                    "height": deviceHeight,
-                    "scale": 1,
-                },
-            },
-        )
-
-        driver.execute_cdp_cmd(
-            "Emulation.setUserAgentOverride",
-            {
-                "userAgent": self.userAgent,
-                "platform": self.userAgentMetadata["platform"],
-                "userAgentMetadata": self.userAgentMetadata,
-            },
-        )
-
-        return driver
+    def browserSetup(self):
+        with sync_playwright() as p:
+            browserType = p.chromium if not self.mobile else p.webkit
+            browser = browserType.launch(headless=self.headless)
+            context = browser.new_context(user_agent=self.userAgent, locale=self.localeLang)
+            page = context.new_page()
+            return page
 
     def setupProfiles(self) -> Path:
         """

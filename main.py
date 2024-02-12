@@ -6,10 +6,11 @@ import random
 import sys
 from pathlib import Path
 
-from src import Browser, DailySet, Login, MorePromotions, PunchCards, Searches
+from src import DailySet, Login, MorePromotions, PunchCards, Searches
 from src.constants import VERSION
 from src.loggingColoredFormatter import ColoredFormatter
 from src.notifier import Notifier
+from src.browser import Browser
 
 POINTS_COUNTER = 0
 
