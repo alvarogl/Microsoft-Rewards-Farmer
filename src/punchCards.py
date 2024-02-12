@@ -7,7 +7,6 @@ import urllib.parse
 from selenium.webdriver.common.by import By
 
 from src.browser import Browser
-
 from .constants import BASE_URL
 
 

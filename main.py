@@ -6,7 +6,8 @@ import random
 import sys
 from pathlib import Path
 
-from src import Browser, DailySet, Login, MorePromotions, PunchCards, Searches
+from src import DailySet, Login, MorePromotions, PunchCards, Searches
+from src.browser import Browser
 from src.constants import VERSION
 from src.loggingColoredFormatter import ColoredFormatter
 from src.notifier import Notifier
@@ -145,7 +146,7 @@ def executeBot(currentAccount, notifier: Notifier, args: argparse.Namespace):
         if remainingSearchesM != 0:
             desktopBrowser.closeBrowser()
             with Browser(
-                mobile=True, account=currentAccount, args=args
+                    mobile=True, account=currentAccount, args=args
             ) as mobileBrowser:
                 accountPointsCounter = Login(mobileBrowser).login()
                 accountPointsCounter = Searches(mobileBrowser).bingSearches(

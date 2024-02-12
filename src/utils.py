@@ -1,110 +1,83 @@
 import contextlib
 import json
-import locale as pylocale
 import time
 import urllib.parse
 from pathlib import Path
 
 import requests
-from selenium.webdriver.chrome.webdriver import WebDriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support import expected_conditions as ec
-from selenium.webdriver.support.wait import WebDriverWait
 
 from .constants import BASE_URL
 
 
 class Utils:
-    def __init__(self, webdriver: WebDriver):
-        self.webdriver = webdriver
-        with contextlib.suppress(Exception):
-            locale = pylocale.getdefaultlocale()[0]
-            pylocale.setlocale(pylocale.LC_NUMERIC, locale)
+    def __init__(self, page):
+        self.page = page
 
-    def waitUntilVisible(self, by: str, selector: str, timeToWait: float = 10):
-        WebDriverWait(self.webdriver, timeToWait).until(
-            ec.visibility_of_element_located((by, selector))
-        )
+    def waitUntilVisible(self, selector: str, timeout: float = 10000):
+        self.page.wait_for_selector(selector, timeout=timeout)
 
-    def waitUntilClickable(self, by: str, selector: str, timeToWait: float = 10):
-        WebDriverWait(self.webdriver, timeToWait).until(
-            ec.element_to_be_clickable((by, selector))
-        )
+    def waitUntilClickable(self, selector: str, timeout: float = 10000):
+        self.page.wait_for_selector(selector, timeout=timeout).click()
 
-    def waitForMSRewardElement(self, by: str, selector: str):
-        loadingTimeAllowed = 5
-        refreshsAllowed = 5
-
-        checkingInterval = 0.5
-        checks = loadingTimeAllowed / checkingInterval
-
+    def waitForMsrewardElement(self, selector: str):
+        loading_time_allowed = 5
+        refreshes_allowed = 5
+        checking_interval = 0.5
+        checks = loading_time_allowed / checking_interval
         tries = 0
-        refreshCount = 0
+        refresh_count = 0
+
         while True:
             try:
-                self.webdriver.find_element(by, selector)
+                self.page.wait_for_selector(selector)
                 return True
-            except Exception:  # pylint: disable=broad-except
+            except:
                 if tries < checks:
                     tries += 1
-                    time.sleep(checkingInterval)
-                elif refreshCount < refreshsAllowed:
-                    self.webdriver.refresh()
-                    refreshCount += 1
+                    time.sleep(checking_interval)
+                elif refresh_count < refreshes_allowed:
+                    self.page.reload()
+                    refresh_count += 1
                     tries = 0
                     time.sleep(5)
                 else:
                     return False
 
     def waitUntilQuestionRefresh(self):
-        return self.waitForMSRewardElement(By.CLASS_NAME, "rqECredits")
+        return self.waitForMsrewardElement(".rqECredits")
 
     def waitUntilQuizLoads(self):
-        return self.waitForMSRewardElement(By.XPATH, '//*[@id="rqStartQuiz"]')
+        return self.waitForMsrewardElement('//*[@id="rqStartQuiz"]')
 
     def resetTabs(self):
-        try:
-            curr = self.webdriver.current_window_handle
-
-            for handle in self.webdriver.window_handles:
-                if handle != curr:
-                    self.webdriver.switch_to.window(handle)
-                    time.sleep(0.5)
-                    self.webdriver.close()
-                    time.sleep(0.5)
-
-            self.webdriver.switch_to.window(curr)
-            time.sleep(0.5)
-            self.goHome()
-        except Exception:  # pylint: disable=broad-except
-            self.goHome()
+        self.page.new_page().goto('about:blank')
 
     def goHome(self):
-        reloadThreshold = 5
-        reloadInterval = 10
-        targetUrl = urllib.parse.urlparse(BASE_URL)
-        self.webdriver.get(BASE_URL)
+        reload_threshold = 5
+        reload_interval = 10
+        target_url = urllib.parse.urlparse(BASE_URL)
+        self.page.goto(BASE_URL)
+
         reloads = 0
-        interval = 1
-        intervalCount = 0
+        interval_count = 0
         while True:
             self.tryDismissCookieBanner()
-            with contextlib.suppress(Exception):
-                self.webdriver.find_element(By.ID, "more-activities")
+            if self.page.query_selector("#more-activities"):
                 break
-            currentUrl = urllib.parse.urlparse(self.webdriver.current_url)
-            if (
-                currentUrl.hostname != targetUrl.hostname
-            ) and self.tryDismissAllMessages():
+
+            current_url = urllib.parse.urlparse(self.page.url)
+            if current_url.hostname != target_url.hostname and self.tryDismissAllMessages():
                 time.sleep(1)
-                self.webdriver.get(BASE_URL)
-            time.sleep(interval)
-            intervalCount += 1
-            if intervalCount >= reloadInterval:
-                intervalCount = 0
+                self.page.goto(BASE_URL)
+
+            time.sleep(1)  # Adjust interval as needed
+
+            interval_count += 1
+            if interval_count >= reload_interval:
+                interval_count = 0
                 reloads += 1
-                self.webdriver.refresh()
-                if reloads >= reloadThreshold:
+                self.page.reload()
+                if reloads >= reload_threshold:
                     break
 
     def getAnswerCode(self, key: str, string: str) -> str:
@@ -113,14 +86,15 @@ class Utils:
         return str(t)
 
     def getDashboardData(self) -> dict:
-        return self.webdriver.execute_script("return dashboard")
+        return self.page.evaluate("() => window.dashboard")
 
     def getBingInfo(self):
-        cookieJar = self.webdriver.get_cookies()
-        cookies = {cookie["name"]: cookie["value"] for cookie in cookieJar}
+        cookie_jar = self.page.context.cookies()
+        cookies = {cookie["name"]: cookie["value"] for cookie in cookie_jar}
         tries = 0
-        maxTries = 5
-        while tries < maxTries:
+        max_tries = 5
+
+        while tries < max_tries:
             with contextlib.suppress(Exception):
                 response = requests.get(
                     "https://www.bing.com/rewards/panelflyout/getuserinfo",
@@ -154,98 +128,91 @@ class Utils:
 
     def tryDismissAllMessages(self):
         buttons = [
-            (By.ID, "iLandingViewAction"),
-            (By.ID, "iShowSkip"),
-            (By.ID, "iNext"),
-            (By.ID, "iLooksGood"),
-            (By.ID, "idSIButton9"),
-            (By.CSS_SELECTOR, ".ms-Button.ms-Button--primary"),
+            'xpath=//*[@id="acceptButton"]',
+            'button#iLandingViewAction',
+            'button#iShowSkip',
+            'button#iNext',
+            'button#iLooksGood',
+            'button#idSIButton9'
         ]
-        result = False
-        for button in buttons:
-            try:
-                self.webdriver.find_element(button[0], button[1]).click()
-                result = True
-            except Exception:  # pylint: disable=broad-except
-                continue
-        return result
+        found = False
+        for button_selector in buttons:
+            if not found:
+                for elem in self.page.locator(button_selector).all():
+                    elem.click()
+                    found = True
+                    break
+
 
     def tryDismissCookieBanner(self):
         with contextlib.suppress(Exception):
-            self.webdriver.find_element(By.ID, "cookie-banner").find_element(
-                By.TAG_NAME, "button"
-            ).click()
+            self.page.locator('#cookie-banner button').first.click()
             time.sleep(2)
 
     def tryDismissBingCookieBanner(self):
         with contextlib.suppress(Exception):
-            self.webdriver.find_element(By.ID, "bnp_btn_accept").click()
+            self.page.locator('#bnp_btn_accept').click()
             time.sleep(2)
 
     def switchToNewTab(self, timeToWait: int = 0):
         time.sleep(0.5)
-        self.webdriver.switch_to.window(window_name=self.webdriver.window_handles[1])
+        self.page.locator('body').wait_for().eval_on_selector_all('a[target=_blank]', 'links => links[0]?.click()')
         if timeToWait > 0:
             time.sleep(timeToWait)
 
     def closeCurrentTab(self):
-        self.webdriver.close()
-        time.sleep(0.5)
-        self.webdriver.switch_to.window(window_name=self.webdriver.window_handles[0])
-        time.sleep(0.5)
+        self.page.close()
 
-    def visitNewTab(self, timeToWait: int = 0):
-        self.switchToNewTab(timeToWait)
+    def visitNewTab(self, time_to_wait: int = 0):
+        self.switchToNewTab(time_to_wait)
         self.closeCurrentTab()
 
     def getRemainingSearches(self):
         dashboard = self.getDashboardData()
-        searchPoints = 1
+        search_points = 1
         counters = dashboard["userStatus"]["counters"]
 
         if "pcSearch" not in counters:
             return 0, 0
-        progressDesktop = 0
+        progress_desktop = 0
 
         for item in counters['pcSearch']:
-            progressDesktop += item.get('pointProgress', 0)
+            progress_desktop += item.get('pointProgress', 0)
 
-        targetDesktop = 0
+        target_desktop = 0
 
         for item in counters['pcSearch']:
-            targetDesktop += item.get('pointProgressMax', 0)
+            target_desktop += item.get('pointProgressMax', 0)
 
-        if targetDesktop in [33, 102]:
+        if target_desktop in [33, 102]:
             # Level 1 or 2 EU/South America
-            searchPoints = 3
-        elif targetDesktop == 55 or targetDesktop >= 170:
+            search_points = 3
+        elif target_desktop == 55 or target_desktop >= 170:
             # Level 1 or 2 US
-            searchPoints = 5
-        remainingDesktop = int((targetDesktop - progressDesktop) / searchPoints)
-        remainingMobile = 0
+            search_points = 5
+        remaining_desktop = int((target_desktop - progress_desktop) / search_points)
+        remaining_mobile = 0
         if dashboard["userStatus"]["levelInfo"]["activeLevel"] != "Level1":
-            progressMobile = counters["mobileSearch"][0]["pointProgress"]
-            targetMobile = counters["mobileSearch"][0]["pointProgressMax"]
-            remainingMobile = int((targetMobile - progressMobile) / searchPoints)
-        return remainingDesktop, remainingMobile
+            progress_mobile = counters["mobileSearch"][0]["pointProgress"]
+            target_mobile = counters["mobileSearch"][0]["pointProgressMax"]
+            remaining_mobile = int((target_mobile - progress_mobile) / search_points)
+        return remaining_desktop, remaining_mobile
 
     def formatNumber(self, number, num_decimals=2):
-        return pylocale.format_string(
-            f"%10.{num_decimals}f", number, grouping=True
-        ).strip()
+        return f"{number:,.{num_decimals}f}"
 
     @staticmethod
-    def getBrowserConfig(sessionPath: Path) -> dict:
-        configFile = sessionPath.joinpath("config.json")
-        if configFile.exists():
-            with open(configFile, "r") as f:
+    def getBrowserConfig(session_path: Path) -> dict:
+        config_file = session_path.joinpath("config.json")
+        if config_file.exists():
+            with open(config_file, "r") as f:
                 config = json.load(f)
                 return config
         else:
             return {}
 
     @staticmethod
-    def saveBrowserConfig(sessionPath: Path, config: dict):
-        configFile = sessionPath.joinpath("config.json")
-        with open(configFile, "w") as f:
+    def saveBrowserConfig(session_path: Path, config: dict):
+        config_file = session_path.joinpath("config.json")
+        with open(config_file, "w") as f:
             json.dump(config, f)

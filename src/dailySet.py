@@ -10,7 +10,7 @@ from .activities import Activities
 class DailySet:
     def __init__(self, browser: Browser):
         self.browser = browser
-        self.webdriver = browser.webdriver
+        self.page = browser.browser
         self.activities = Activities(browser)
 
     def completeDailySet(self):
@@ -66,7 +66,8 @@ class DailySet:
                                 filters[filterEl[0]] = filterEl[1]
                             if "PollScenarioId" in filters:
                                 logging.info(
-                                    "[DAILY SET] " + f"Completing poll of card {cardId}"
+                                    "[DAILY SET] "
+                                    + f"Completing poll of card {cardId}"
                                 )
                                 self.activities.completeSurvey()
                             else:

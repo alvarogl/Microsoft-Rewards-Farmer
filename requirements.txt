@@ -1,5 +1,5 @@
 requests
 selenium
 ipapi
-undetected-chromedriver
-selenium-wire
+pytest-playwright
+playwright
